@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Connect 4</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <h1>Connect 4 Multiplayer</h1>
+    <div>
+      <button onclick="createGame()">Create Game</button>
+      <input type="text" id="roomInput" placeholder="Room ID" />
+      <button onclick="joinGame()">Join Game</button>
+    </div>
+    <div id="game"></div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="game.js"></script>
+  </body>
+</html>
