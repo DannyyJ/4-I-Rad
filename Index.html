@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sv">
   <head>
     <meta charset="UTF-8" />
-    <title>Connect 4</title>
+    <title>Fyra i rad</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <h1>Connect 4 Multiplayer</h1>
-    <div>
-      <button onclick="createGame()">Create Game</button>
-      <input type="text" id="roomInput" placeholder="Room ID" />
-      <button onclick="joinGame()">Join Game</button>
-    </div>
-    <div id="game"></div>
+    <h1>Fyra i rad</h1>
+    <button id="createBtn">Skapa spel</button>
+    <input id="joinInput" placeholder="Ange rum-ID" />
+    <button id="joinBtn">Gå med i spel</button>
+    <p id="roomInfo"></p>
+    <canvas id="board" width="700" height="600"></canvas>
+
     <script src="/socket.io/socket.io.js"></script>
     <script src="game.js"></script>
   </body>

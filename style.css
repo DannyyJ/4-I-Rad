@@ -1,15 +1,16 @@
 body {
-  font-family: sans-serif;
   text-align: center;
+  font-family: sans-serif;
+  background: #eef;
 }
 
-.cell {
-  display: inline-block;
-  width: 40px;
-  height: 40px;
-  margin: 2px;
-  background-color: #ccc;
-  line-height: 40px;
-  font-size: 20px;
-  cursor: pointer;
+canvas {
+  border: 2px solid black;
+  margin-top: 20px;
+  background: #00f;
+}
+
+button {
+  margin: 10px;
+  padding: 10px;
 }
