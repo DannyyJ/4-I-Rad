@@ -8,12 +8,10 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static(path.join(__dirname)));
-app.use(express.json());
 
 const games = {};
 
 function checkWinner(board, player) {
-  // Horisontellt
   for (let row = 0; row < 6; row++) {
     for (let col = 0; col < 4; col++) {
       if (
@@ -25,7 +23,6 @@ function checkWinner(board, player) {
     }
   }
 
-  // Vertikalt
   for (let col = 0; col < 7; col++) {
     for (let row = 0; row < 3; row++) {
       if (
@@ -37,7 +34,6 @@ function checkWinner(board, player) {
     }
   }
 
-  // Diagonal höger
   for (let row = 0; row < 3; row++) {
     for (let col = 0; col < 4; col++) {
       if (
@@ -49,7 +45,6 @@ function checkWinner(board, player) {
     }
   }
 
-  // Diagonal vänster
   for (let row = 0; row < 3; row++) {
     for (let col = 3; col < 7; col++) {
       if (
@@ -68,40 +63,41 @@ function isBoardFull(board) {
   return board.every(row => row.every(cell => cell !== 0));
 }
 
+function generateRoomId() {
+  return Math.random().toString(36).substring(2, 7);
+}
+
 io.on('connection', (socket) => {
-  console.log('Ny anslutning:', socket.id);
+  console.log('🔌 Ny användare ansluten:', socket.id);
 
   socket.on('createGame', () => {
-    const roomId = Math.random().toString(36).substr(2, 5);
-    console.log(`Skapar nytt spel med rum-ID: ${roomId}`);
-
+    const roomId = generateRoomId();
     games[roomId] = {
       roomId,
       players: [{ id: socket.id, playerNumber: 1 }],
       board: Array(6).fill(null).map(() => Array(7).fill(0)),
-      turn: 1
+      turn: 1,
+      rematchVotes: 0
     };
-
     socket.join(roomId);
     socket.emit('gameCreated', roomId);
-    socket.emit('playerInfo', { playerNumber: 1 });
+    console.log(`🎲 Spel skapat: ${roomId} av ${socket.id}`);
   });
 
   socket.on('joinGame', (roomId) => {
-    console.log(`${socket.id} försöker gå med i rum: ${roomId}`);
     const game = games[roomId];
     if (game && game.players.length === 1) {
       game.players.push({ id: socket.id, playerNumber: 2 });
       socket.join(roomId);
-      console.log(`Player 2 gick med i rum: ${roomId}`);
+      console.log(`👥 ${socket.id} gick med i spel: ${roomId}`);
 
       io.to(game.players[0].id).emit('playerInfo', { playerNumber: 1 });
       io.to(game.players[1].id).emit('playerInfo', { playerNumber: 2 });
 
-      socket.emit('joinedGame', roomId);
       io.to(roomId).emit('startGame', { board: game.board });
     } else {
-      socket.emit('error', 'Kunde inte gå med i spelet');
+      console.log(`❌ Misslyckades med att gå med i spel: ${roomId}`);
+      socket.emit('error', 'Could not join game');
     }
   });
 
@@ -110,16 +106,21 @@ io.on('connection', (socket) => {
     if (!game) return;
 
     const player = game.players.find(p => p.id === socket.id);
-    if (!player) return;
+    if (!player) {
+      console.log(`⚠️ Ogiltig spelare: ${socket.id}`);
+      return;
+    }
 
     if (player.playerNumber !== game.turn) {
-      socket.emit('error', 'Inte din tur!');
+      console.log(`⏱️ Fel tur: ${socket.id}`);
+      socket.emit('error', 'Not your turn!');
       return;
     }
 
     for (let row = 5; row >= 0; row--) {
       if (game.board[row][column] === 0) {
         game.board[row][column] = player.playerNumber;
+        console.log(`✅ Spelare ${player.playerNumber} (${socket.id}) lade i kolumn ${column}`);
 
         const won = checkWinner(game.board, player.playerNumber);
         const draw = isBoardFull(game.board);
@@ -127,11 +128,11 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('updateBoard', game.board);
 
         if (won) {
+          console.log(`🏆 Spelare ${player.playerNumber} vann i spel: ${roomId}`);
           io.to(roomId).emit('gameOver', { winner: player.playerNumber });
-          delete games[roomId];
         } else if (draw) {
+          console.log(`🤝 Oavgjort i spel: ${roomId}`);
           io.to(roomId).emit('gameOver', { winner: 0 });
-          delete games[roomId];
         } else {
           game.turn = game.turn === 1 ? 2 : 1;
         }
@@ -141,11 +142,27 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('requestRematch', (roomId) => {
+    const game = games[roomId];
+    if (!game) return;
+
+    game.rematchVotes = (game.rematchVotes || 0) + 1;
+
+    if (game.rematchVotes === 2) {
+      game.board = Array(6).fill(null).map(() => Array(7).fill(0));
+      game.turn = 1;
+      game.rematchVotes = 0;
+
+      io.to(roomId).emit('startGame', { board: game.board });
+    }
+  });
+
   socket.on('disconnect', () => {
     for (const roomId in games) {
       const game = games[roomId];
       if (game.players.some(p => p.id === socket.id)) {
-        io.to(roomId).emit('gameOver', { winner: null, reason: 'Motståndaren kopplade från' });
+        console.log(`❗ Spelare frånkopplad: ${socket.id} i spel ${roomId}`);
+        io.to(roomId).emit('gameOver', { winner: null, reason: 'Opponent disconnected' });
         delete games[roomId];
         break;
       }
@@ -154,4 +171,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = 3000;
-server.listen(PORT, () => console.log(`Servern körs på http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Servern körs på http://localhost:${PORT}`));

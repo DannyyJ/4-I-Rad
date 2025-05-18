@@ -7,9 +7,15 @@ const joinBtn = document.getElementById('joinBtn');
 const joinInput = document.getElementById('joinInput');
 const roomInfo = document.getElementById('roomInfo');
 
+const gameMessage = document.getElementById('gameMessage');
+const endGameButtons = document.getElementById('endGameButtons');
+const playAgainBtn = document.getElementById('playAgainBtn');
+const leaveBtn = document.getElementById('leaveBtn');
+
 let roomId = null;
-let playerNumber = null;
 let board = Array(6).fill(null).map(() => Array(7).fill(0));
+let playerNumber = null;
+let waitingForRematch = false;
 
 function drawBoard() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -24,65 +30,116 @@ function drawBoard() {
   }
 }
 
+function resetGameUI() {
+  gameMessage.textContent = '';
+  endGameButtons.style.display = 'none';
+  waitingForRematch = false;
+}
+
 canvas.addEventListener('click', (e) => {
-  if (!roomId || playerNumber === null) {
-    console.log("No room joined yet.");
+  if (!roomId) {
+    console.log('No room joined yet.');
     return;
   }
   const column = Math.floor(e.offsetX / 100);
+  console.log(`Player ${playerNumber} clicked column ${column} in room ${roomId}`);
   socket.emit('makeMove', { roomId, column });
 });
 
 createBtn.addEventListener('click', () => {
+  console.log('Creating game...');
+  resetGameUI();
   socket.emit('createGame');
 });
 
 joinBtn.addEventListener('click', () => {
   const inputId = joinInput.value.trim();
   if (inputId) {
+    console.log(`Trying to join room: ${inputId}`);
+    resetGameUI();
     socket.emit('joinGame', inputId);
+    roomId = inputId;  
+    roomInfo.textContent = `Gick med i rum: ${roomId}`;
   }
 });
 
+playAgainBtn.addEventListener('click', () => {
+  if (!roomId) return;
+  console.log('Spela igen klickad');
+  waitingForRematch = true;
+  gameMessage.textContent = 'Väntar på motståndaren...';
+  socket.emit('requestRematch', roomId);
+  playAgainBtn.disabled = true;
+});
+
+leaveBtn.addEventListener('click', () => {
+  console.log('Lämnar lobby');
+  roomId = null;
+  playerNumber = null;
+  board = Array(6).fill(null).map(() => Array(7).fill(0));
+  roomInfo.textContent = '';
+  resetGameUI();
+  drawBoard();
+  socket.emit('leaveGame');  // Inform server about leaving
+});
+
 socket.on('gameCreated', (id) => {
+  console.log(`Game created with room ID: ${id}`);
   roomId = id;
   roomInfo.textContent = `Spel skapat! Rum-ID: ${roomId}`;
-  console.log(`Skapat spel med ID: ${roomId}`);
-});
-
-socket.on('joinedGame', (id) => {
-  roomId = id;
-  roomInfo.textContent = `Ansluten till rum: ${roomId}`;
-  console.log(`Gick med i rum: ${roomId}`);
-});
-
-socket.on('playerInfo', (info) => {
-  playerNumber = info.playerNumber;
-  console.log(`Tilldelad spelare: ${playerNumber}`);
 });
 
 socket.on('startGame', (data) => {
+  console.log('Game started');
   board = data.board;
   drawBoard();
-  console.log("Spelet har börjat!");
+  resetGameUI();
+  playAgainBtn.disabled = false;
 });
 
 socket.on('updateBoard', (newBoard) => {
+  console.log('Board updated');
   board = newBoard;
   drawBoard();
 });
 
+socket.on('playerInfo', (data) => {
+  playerNumber = data.playerNumber;
+  console.log(`You are player number ${playerNumber}`);
+});
+
 socket.on('error', (msg) => {
+  console.log('Error:', msg);
   alert(msg);
 });
 
 socket.on('gameOver', ({ winner, reason }) => {
   if (reason) {
-    alert(`Spelet avslutades: ${reason}`);
+    gameMessage.textContent = `Spelet avslutades: ${reason}`;
   } else if (winner === 0) {
-    alert("Oavgjort! Ingen vann.");
+    gameMessage.textContent = "Oavgjort! Ingen vann.";
   } else {
     const color = winner === 1 ? 'Röd' : 'Gul';
-    alert(`${color} spelare vinner!`);
+    gameMessage.textContent = `${color} spelare vinner!`;
   }
+  endGameButtons.style.display = 'block';
+  playAgainBtn.disabled = false;
+});
+
+socket.on('rematchStatus', ({ waiting }) => {
+  if (waiting) {
+    gameMessage.textContent = 'Väntar på motståndaren...';
+    playAgainBtn.disabled = true;
+  } else {
+    gameMessage.textContent = '';
+    playAgainBtn.disabled = false;
+  }
+});
+
+socket.on('rematchStart', (data) => {
+  console.log('Rematch startar');
+  board = data.board;
+  drawBoard();
+  resetGameUI();
+  playAgainBtn.disabled = false;
 });
