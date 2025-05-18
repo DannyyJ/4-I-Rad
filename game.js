@@ -58,3 +58,12 @@ socket.on('updateBoard', (newBoard) => {
 socket.on('error', (msg) => {
   alert(msg);
 });
+
+socket.on('gameOver', ({ winner }) => {
+  if (winner === 0) {
+    alert("Oavgjort! Ingen vann.");
+  } else {
+    const color = winner === 1 ? 'Röd' : 'Gul';
+    alert(`${color} spelare vinner!`);
+  }
+});
