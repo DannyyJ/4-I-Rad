@@ -1,7 +1,6 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const session = require('express-session');
 const path = require('path');
 
 const app = express();
@@ -70,33 +69,39 @@ function isBoardFull(board) {
 }
 
 io.on('connection', (socket) => {
-  console.log('A user connected:', socket.id);
+  console.log('Ny anslutning:', socket.id);
 
   socket.on('createGame', () => {
-    const roomId = socket.id;
+    const roomId = Math.random().toString(36).substr(2, 5);
+    console.log(`Skapar nytt spel med rum-ID: ${roomId}`);
+
     games[roomId] = {
       roomId,
       players: [{ id: socket.id, playerNumber: 1 }],
       board: Array(6).fill(null).map(() => Array(7).fill(0)),
       turn: 1
     };
+
     socket.join(roomId);
     socket.emit('gameCreated', roomId);
+    socket.emit('playerInfo', { playerNumber: 1 });
   });
 
   socket.on('joinGame', (roomId) => {
+    console.log(`${socket.id} försöker gå med i rum: ${roomId}`);
     const game = games[roomId];
     if (game && game.players.length === 1) {
       game.players.push({ id: socket.id, playerNumber: 2 });
       socket.join(roomId);
+      console.log(`Player 2 gick med i rum: ${roomId}`);
 
-      // Skicka spelarroller
       io.to(game.players[0].id).emit('playerInfo', { playerNumber: 1 });
       io.to(game.players[1].id).emit('playerInfo', { playerNumber: 2 });
 
+      socket.emit('joinedGame', roomId);
       io.to(roomId).emit('startGame', { board: game.board });
     } else {
-      socket.emit('error', 'Could not join game');
+      socket.emit('error', 'Kunde inte gå med i spelet');
     }
   });
 
@@ -105,10 +110,10 @@ io.on('connection', (socket) => {
     if (!game) return;
 
     const player = game.players.find(p => p.id === socket.id);
-    if (!player) return; // Denna socket tillhör inte spelet
+    if (!player) return;
 
     if (player.playerNumber !== game.turn) {
-      socket.emit('error', 'Not your turn!');
+      socket.emit('error', 'Inte din tur!');
       return;
     }
 
@@ -125,7 +130,7 @@ io.on('connection', (socket) => {
           io.to(roomId).emit('gameOver', { winner: player.playerNumber });
           delete games[roomId];
         } else if (draw) {
-          io.to(roomId).emit('gameOver', { winner: 0 }); // 0 betyder oavgjort
+          io.to(roomId).emit('gameOver', { winner: 0 });
           delete games[roomId];
         } else {
           game.turn = game.turn === 1 ? 2 : 1;
@@ -137,11 +142,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    // Ta bort spel där spelare kopplat från
     for (const roomId in games) {
       const game = games[roomId];
       if (game.players.some(p => p.id === socket.id)) {
-        io.to(roomId).emit('gameOver', { winner: null, reason: 'Opponent disconnected' });
+        io.to(roomId).emit('gameOver', { winner: null, reason: 'Motståndaren kopplade från' });
         delete games[roomId];
         break;
       }
@@ -150,4 +154,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = 3000;
-server.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`Servern körs på http://localhost:${PORT}`));

@@ -8,6 +8,7 @@ const joinInput = document.getElementById('joinInput');
 const roomInfo = document.getElementById('roomInfo');
 
 let roomId = null;
+let playerNumber = null;
 let board = Array(6).fill(null).map(() => Array(7).fill(0));
 
 function drawBoard() {
@@ -24,7 +25,10 @@ function drawBoard() {
 }
 
 canvas.addEventListener('click', (e) => {
-  if (!roomId) return;
+  if (!roomId || playerNumber === null) {
+    console.log("No room joined yet.");
+    return;
+  }
   const column = Math.floor(e.offsetX / 100);
   socket.emit('makeMove', { roomId, column });
 });
@@ -43,11 +47,24 @@ joinBtn.addEventListener('click', () => {
 socket.on('gameCreated', (id) => {
   roomId = id;
   roomInfo.textContent = `Spel skapat! Rum-ID: ${roomId}`;
+  console.log(`Skapat spel med ID: ${roomId}`);
+});
+
+socket.on('joinedGame', (id) => {
+  roomId = id;
+  roomInfo.textContent = `Ansluten till rum: ${roomId}`;
+  console.log(`Gick med i rum: ${roomId}`);
+});
+
+socket.on('playerInfo', (info) => {
+  playerNumber = info.playerNumber;
+  console.log(`Tilldelad spelare: ${playerNumber}`);
 });
 
 socket.on('startGame', (data) => {
   board = data.board;
   drawBoard();
+  console.log("Spelet har börjat!");
 });
 
 socket.on('updateBoard', (newBoard) => {
@@ -59,8 +76,10 @@ socket.on('error', (msg) => {
   alert(msg);
 });
 
-socket.on('gameOver', ({ winner }) => {
-  if (winner === 0) {
+socket.on('gameOver', ({ winner, reason }) => {
+  if (reason) {
+    alert(`Spelet avslutades: ${reason}`);
+  } else if (winner === 0) {
     alert("Oavgjort! Ingen vann.");
   } else {
     const color = winner === 1 ? 'Röd' : 'Gul';
