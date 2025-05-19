@@ -10,6 +10,7 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname)));
 
 const games = {};
+const leaderboard = {};
 
 function checkWinner(board, player) {
   for (let row = 0; row < 6; row++) {
@@ -68,107 +69,164 @@ function generateRoomId() {
 }
 
 io.on('connection', (socket) => {
-  console.log('🔌 Ny användare ansluten:', socket.id);
+  console.log('Ny användare ansluten:', socket.id);
+
+  socket.on('setName', (name) => {
+    socket.playerName = name;
+    console.log(`Namn satt för ${socket.id}: ${name}`);
+  });
 
   socket.on('createGame', () => {
+    if (!socket.playerName) {
+      socket.emit('error', 'Sätt ditt namn först!');
+      return;
+    }
+
     const roomId = generateRoomId();
     games[roomId] = {
       roomId,
-      players: [{ id: socket.id, playerNumber: 1 }],
+      players: [{ id: socket.id, playerNumber: 1, name: socket.playerName, readyForRematch: false }],
       board: Array(6).fill(null).map(() => Array(7).fill(0)),
-      turn: 1,
-      rematchVotes: 0
+      turn: 1
     };
     socket.join(roomId);
+    socket.currentRoom = roomId;
     socket.emit('gameCreated', roomId);
-    console.log(`🎲 Spel skapat: ${roomId} av ${socket.id}`);
+    console.log(`Spel skapat: ${roomId} av ${socket.playerName} (${socket.id})`);
   });
 
   socket.on('joinGame', (roomId) => {
     const game = games[roomId];
-    if (game && game.players.length === 1) {
-      game.players.push({ id: socket.id, playerNumber: 2 });
-      socket.join(roomId);
-      console.log(`👥 ${socket.id} gick med i spel: ${roomId}`);
-
-      io.to(game.players[0].id).emit('playerInfo', { playerNumber: 1 });
-      io.to(game.players[1].id).emit('playerInfo', { playerNumber: 2 });
-
-      io.to(roomId).emit('startGame', { board: game.board });
-    } else {
-      console.log(`❌ Misslyckades med att gå med i spel: ${roomId}`);
-      socket.emit('error', 'Could not join game');
+    if (!socket.playerName) {
+      socket.emit('error', 'Sätt ditt namn först!');
+      return;
     }
+    if (!game) {
+      socket.emit('error', 'Rummet finns inte.');
+      return;
+    }
+    if (game.players.length >= 2) {
+      socket.emit('error', 'Spelet är fullt.');
+      return;
+    }
+    game.players.push({ id: socket.id, playerNumber: 2, name: socket.playerName, readyForRematch: false });
+    socket.join(roomId);
+    socket.currentRoom = roomId;
+
+    game.players.forEach(player => {
+      io.to(player.id).emit('startGame', { board: game.board });
+      io.to(player.id).emit('playerInfo', { playerNumber: player.playerNumber });
+    });
+
+    io.in(roomId).emit('leaderboardUpdate', getLeaderboardSorted());
+    console.log(`${socket.playerName} (${socket.id}) gick med i rum ${roomId}`);
   });
 
   socket.on('makeMove', ({ roomId, column }) => {
     const game = games[roomId];
-    if (!game) return;
-
-    const player = game.players.find(p => p.id === socket.id);
-    if (!player) {
-      console.log(`⚠️ Ogiltig spelare: ${socket.id}`);
+    if (!game) {
+      socket.emit('error', 'Spelet finns inte.');
       return;
     }
-
-    if (player.playerNumber !== game.turn) {
-      console.log(`⏱️ Fel tur: ${socket.id}`);
-      socket.emit('error', 'Not your turn!');
+    const player = game.players.find(p => p.id === socket.id);
+    if (!player) {
+      socket.emit('error', 'Du är inte med i detta spel.');
+      return;
+    }
+    if (game.turn !== player.playerNumber) {
+      socket.emit('error', 'Det är inte din tur.');
       return;
     }
 
     for (let row = 5; row >= 0; row--) {
       if (game.board[row][column] === 0) {
         game.board[row][column] = player.playerNumber;
-        console.log(`✅ Spelare ${player.playerNumber} (${socket.id}) lade i kolumn ${column}`);
-
-        const won = checkWinner(game.board, player.playerNumber);
-        const draw = isBoardFull(game.board);
-
-        io.to(roomId).emit('updateBoard', game.board);
-
-        if (won) {
-          console.log(`🏆 Spelare ${player.playerNumber} vann i spel: ${roomId}`);
-          io.to(roomId).emit('gameOver', { winner: player.playerNumber });
-        } else if (draw) {
-          console.log(`🤝 Oavgjort i spel: ${roomId}`);
-          io.to(roomId).emit('gameOver', { winner: 0 });
-        } else {
-          game.turn = game.turn === 1 ? 2 : 1;
-        }
-
         break;
       }
     }
+
+    io.in(roomId).emit('updateBoard', game.board);
+
+    if (checkWinner(game.board, player.playerNumber)) {
+      leaderboard[player.name] = (leaderboard[player.name] || 0) + 1;
+
+      io.in(roomId).emit('gameOver', { winner: player.playerNumber });
+      io.in(roomId).emit('leaderboardUpdate', getLeaderboardSorted());
+      console.log(`${player.name} vann i rum ${roomId}`);
+
+      game.turn = null;
+    } else if (isBoardFull(game.board)) {
+      io.in(roomId).emit('gameOver', { winner: 0 });
+      game.turn = null;
+    } else {
+      game.turn = player.playerNumber === 1 ? 2 : 1;
+    }
   });
 
-  socket.on('requestRematch', (roomId) => {
+  socket.on('playAgain', (roomId) => {
+    const game = games[roomId];
+    if (!game) return;
+    const player = game.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    player.readyForRematch = true;
+
+    if (game.players.every(p => p.readyForRematch)) {
+      game.board = Array(6).fill(null).map(() => Array(7).fill(0));
+      game.turn = 1;
+      game.players.forEach(p => p.readyForRematch = false);
+
+      io.in(roomId).emit('startGame', { board: game.board });
+      io.in(roomId).emit('playAgainReady');
+      console.log(`Nytt spel startat i rum ${roomId}`);
+    } else {
+      socket.emit('gameMessage', 'Väntar på motståndaren...');
+    }
+  });
+
+  socket.on('leaveGame', (roomId) => {
     const game = games[roomId];
     if (!game) return;
 
-    game.rematchVotes = (game.rematchVotes || 0) + 1;
+    game.players = game.players.filter(p => p.id !== socket.id);
 
-    if (game.rematchVotes === 2) {
-      game.board = Array(6).fill(null).map(() => Array(7).fill(0));
-      game.turn = 1;
-      game.rematchVotes = 0;
+    socket.leave(roomId);
+    socket.currentRoom = null;
 
-      io.to(roomId).emit('startGame', { board: game.board });
+    if (game.players.length > 0) {
+      io.to(game.players[0].id).emit('opponentLeft');
+    } else {
+      delete games[roomId];
+      console.log(`Rum ${roomId} togs bort (tomt)`);
     }
   });
 
   socket.on('disconnect', () => {
-    for (const roomId in games) {
-      const game = games[roomId];
-      if (game.players.some(p => p.id === socket.id)) {
-        console.log(`❗ Spelare frånkopplad: ${socket.id} i spel ${roomId}`);
-        io.to(roomId).emit('gameOver', { winner: null, reason: 'Opponent disconnected' });
-        delete games[roomId];
-        break;
-      }
+    console.log('Användare kopplade från:', socket.id);
+    const roomId = socket.currentRoom;
+    if (!roomId) return;
+
+    const game = games[roomId];
+    if (!game) return;
+
+    game.players = game.players.filter(p => p.id !== socket.id);
+
+    if (game.players.length > 0) {
+      io.to(game.players[0].id).emit('opponentLeft');
+    } else {
+      delete games[roomId];
+      console.log(`Rum ${roomId} togs bort (tomt)`);
     }
   });
 });
 
-const PORT = 3000;
-server.listen(PORT, () => console.log(`🚀 Servern körs på http://localhost:${PORT}`));
+function getLeaderboardSorted() {
+  const arr = Object.entries(leaderboard).map(([name, wins]) => ({ name, wins }));
+  arr.sort((a, b) => b.wins - a.wins);
+  return arr;
+}
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Servern körs på port ${PORT}`);
+});

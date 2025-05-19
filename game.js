@@ -12,10 +12,15 @@ const endGameButtons = document.getElementById('endGameButtons');
 const playAgainBtn = document.getElementById('playAgainBtn');
 const leaveBtn = document.getElementById('leaveBtn');
 
+const nameInput = document.getElementById('nameInput');
+const setNameBtn = document.getElementById('setNameBtn');
+
+const leaderboardList = document.getElementById('leaderboardList');
+
 let roomId = null;
 let board = Array(6).fill(null).map(() => Array(7).fill(0));
 let playerNumber = null;
-let waitingForRematch = false;
+let playerName = null;
 
 function drawBoard() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -33,7 +38,15 @@ function drawBoard() {
 function resetGameUI() {
   gameMessage.textContent = '';
   endGameButtons.style.display = 'none';
-  waitingForRematch = false;
+}
+
+function updateLeaderboard(leaderboard) {
+  leaderboardList.innerHTML = '';
+  leaderboard.forEach(({ name, wins }) => {
+    const li = document.createElement('li');
+    li.textContent = `${name}: ${wins} vinster`;
+    leaderboardList.appendChild(li);
+  });
 }
 
 canvas.addEventListener('click', (e) => {
@@ -44,6 +57,22 @@ canvas.addEventListener('click', (e) => {
   const column = Math.floor(e.offsetX / 100);
   console.log(`Player ${playerNumber} clicked column ${column} in room ${roomId}`);
   socket.emit('makeMove', { roomId, column });
+});
+
+setNameBtn.addEventListener('click', () => {
+  const name = nameInput.value.trim();
+  if (!name) {
+    alert('Ange ett giltigt namn');
+    return;
+  }
+  playerName = name;
+  console.log(`Namn satt: ${playerName}`);
+  // Aktivera knappar när namn är satt
+  createBtn.disabled = false;
+  joinBtn.disabled = false;
+  nameInput.disabled = true;
+  setNameBtn.disabled = true;
+  socket.emit('setName', playerName);
 });
 
 createBtn.addEventListener('click', () => {
@@ -58,7 +87,7 @@ joinBtn.addEventListener('click', () => {
     console.log(`Trying to join room: ${inputId}`);
     resetGameUI();
     socket.emit('joinGame', inputId);
-    roomId = inputId;  
+    roomId = inputId;
     roomInfo.textContent = `Gick med i rum: ${roomId}`;
   }
 });
@@ -66,21 +95,21 @@ joinBtn.addEventListener('click', () => {
 playAgainBtn.addEventListener('click', () => {
   if (!roomId) return;
   console.log('Spela igen klickad');
-  waitingForRematch = true;
+  resetGameUI();
+  socket.emit('playAgain', roomId);
   gameMessage.textContent = 'Väntar på motståndaren...';
-  socket.emit('requestRematch', roomId);
-  playAgainBtn.disabled = true;
+  endGameButtons.style.display = 'none';
 });
 
 leaveBtn.addEventListener('click', () => {
   console.log('Lämnar lobby');
+  socket.emit('leaveGame', roomId);
   roomId = null;
   playerNumber = null;
   board = Array(6).fill(null).map(() => Array(7).fill(0));
   roomInfo.textContent = '';
   resetGameUI();
   drawBoard();
-  socket.emit('leaveGame');  // Inform server about leaving
 });
 
 socket.on('gameCreated', (id) => {
@@ -93,8 +122,6 @@ socket.on('startGame', (data) => {
   console.log('Game started');
   board = data.board;
   drawBoard();
-  resetGameUI();
-  playAgainBtn.disabled = false;
 });
 
 socket.on('updateBoard', (newBoard) => {
@@ -123,23 +150,17 @@ socket.on('gameOver', ({ winner, reason }) => {
     gameMessage.textContent = `${color} spelare vinner!`;
   }
   endGameButtons.style.display = 'block';
-  playAgainBtn.disabled = false;
 });
 
-socket.on('rematchStatus', ({ waiting }) => {
-  if (waiting) {
-    gameMessage.textContent = 'Väntar på motståndaren...';
-    playAgainBtn.disabled = true;
-  } else {
-    gameMessage.textContent = '';
-    playAgainBtn.disabled = false;
-  }
+socket.on('leaderboardUpdate', (leaderboard) => {
+  updateLeaderboard(leaderboard);
 });
 
-socket.on('rematchStart', (data) => {
-  console.log('Rematch startar');
-  board = data.board;
-  drawBoard();
-  resetGameUI();
-  playAgainBtn.disabled = false;
+socket.on('playAgainReady', () => {
+  gameMessage.textContent = 'Båda spelare redo! Spelet startar...';
+});
+
+socket.on('opponentLeft', () => {
+  gameMessage.textContent = 'Motståndaren lämnade lobbyn.';
+  endGameButtons.style.display = 'block';
 });

@@ -7,20 +7,34 @@
   </head>
   <body>
     <h1>Fyra i rad</h1>
-    <button id="createBtn">Skapa spel</button>
-    <input id="joinInput" placeholder="Ange rum-ID" />
-    <button id="joinBtn">Gå med i spel</button>
-    <p id="roomInfo"></p>
-    <canvas id="board" width="700" height="600"></canvas>
+    <div id="container">
+      <div id="leaderboard">
+        <h2>Leaderboard</h2>
+        <ul id="leaderboardList"></ul>
+      </div>
 
-    <div
-      id="gameMessage"
-      style="margin-top: 20px; font-size: 18px; font-weight: bold"
-    ></div>
+      <div id="gameArea">
+        <div id="userArea">
+          <input id="nameInput" placeholder="Ange ditt namn" />
+          <button id="setNameBtn">Sätt namn</button>
+        </div>
 
-    <div id="endGameButtons" style="margin-top: 20px; display: none">
-      <button id="playAgainBtn">Spela igen</button>
-      <button id="leaveBtn">Lämna lobby</button>
+        <button id="createBtn" disabled>Skapa spel</button>
+        <input id="joinInput" placeholder="Ange rum-ID" />
+        <button id="joinBtn" disabled>Gå med i spel</button>
+        <p id="roomInfo"></p>
+        <canvas id="board" width="700" height="600"></canvas>
+
+        <div
+          id="gameMessage"
+          style="margin-top: 20px; font-size: 18px; font-weight: bold"
+        ></div>
+
+        <div id="endGameButtons" style="margin-top: 20px; display: none">
+          <button id="playAgainBtn">Spela igen</button>
+          <button id="leaveBtn">Lämna lobby</button>
+        </div>
+      </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
