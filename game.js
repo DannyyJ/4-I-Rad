@@ -1,14 +1,18 @@
+// Skapar en socket-anslutning till servern
 const socket = io();
+
+// Hämtar referens till canvas och dess kontext för att rita spelbrädet
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
 
+// Referenser till knappar och inputfält i topControls
 const createBtn = document.getElementById('createBtn');
 const joinBtn = document.getElementById('joinBtn');
 const joinInput = document.getElementById('joinInput');
 const roomInfo = document.getElementById('roomInfo');
 
 const gameMessage = document.getElementById('gameMessage');
-const endGameButtons = document.getElementById('endGameButtons');
+
 const playAgainBtn = document.getElementById('playAgainBtn');
 const leaveBtn = document.getElementById('leaveBtn');
 
@@ -17,11 +21,13 @@ const setNameBtn = document.getElementById('setNameBtn');
 
 const leaderboardList = document.getElementById('leaderboardList');
 
+// Spelrelaterade variabler
 let roomId = null;
-let board = Array(6).fill(null).map(() => Array(7).fill(0));
+let board = Array(6).fill(null).map(() => Array(7).fill(0)); // Skapar tomt bräde (6 rader × 7 kolumner)
 let playerNumber = null;
 let playerName = null;
 
+// Funktion för att rita ut spelbrädet
 function drawBoard() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   for (let row = 0; row < 6; row++) {
@@ -35,11 +41,14 @@ function drawBoard() {
   }
 }
 
+// Nollställ meddelanden och göm spela igen & lämna-knappar
 function resetGameUI() {
   gameMessage.textContent = '';
-  endGameButtons.style.display = 'none';
+  playAgainBtn.style.display = 'none';
+  leaveBtn.style.display = 'none';
 }
 
+// Uppdaterar topplistan
 function updateLeaderboard(leaderboard) {
   leaderboardList.innerHTML = '';
   leaderboard.forEach(({ name, wins }) => {
@@ -49,16 +58,14 @@ function updateLeaderboard(leaderboard) {
   });
 }
 
+// När spelaren klickar på spelbrädet för att göra ett drag
 canvas.addEventListener('click', (e) => {
-  if (!roomId) {
-    console.log('No room joined yet.');
-    return;
-  }
+  if (!roomId) return;
   const column = Math.floor(e.offsetX / 100);
-  console.log(`Player ${playerNumber} clicked column ${column} in room ${roomId}`);
   socket.emit('makeMove', { roomId, column });
 });
 
+// När spelaren sätter sitt namn
 setNameBtn.addEventListener('click', () => {
   const name = nameInput.value.trim();
   if (!name) {
@@ -66,8 +73,6 @@ setNameBtn.addEventListener('click', () => {
     return;
   }
   playerName = name;
-  console.log(`Namn satt: ${playerName}`);
-  // Aktivera knappar när namn är satt
   createBtn.disabled = false;
   joinBtn.disabled = false;
   nameInput.disabled = true;
@@ -75,16 +80,16 @@ setNameBtn.addEventListener('click', () => {
   socket.emit('setName', playerName);
 });
 
+// Skapa nytt spelrum
 createBtn.addEventListener('click', () => {
-  console.log('Creating game...');
   resetGameUI();
   socket.emit('createGame');
 });
 
+// Gå med i existerande spelrum
 joinBtn.addEventListener('click', () => {
   const inputId = joinInput.value.trim();
   if (inputId) {
-    console.log(`Trying to join room: ${inputId}`);
     resetGameUI();
     socket.emit('joinGame', inputId);
     roomId = inputId;
@@ -92,17 +97,18 @@ joinBtn.addEventListener('click', () => {
   }
 });
 
+// Spela igen-knappen
 playAgainBtn.addEventListener('click', () => {
   if (!roomId) return;
-  console.log('Spela igen klickad');
   resetGameUI();
   socket.emit('playAgain', roomId);
   gameMessage.textContent = 'Väntar på motståndaren...';
-  endGameButtons.style.display = 'none';
+  playAgainBtn.style.display = 'none';
+  leaveBtn.style.display = 'none';
 });
 
+// Lämna spelrummet
 leaveBtn.addEventListener('click', () => {
-  console.log('Lämnar lobby');
   socket.emit('leaveGame', roomId);
   roomId = null;
   playerNumber = null;
@@ -110,36 +116,87 @@ leaveBtn.addEventListener('click', () => {
   roomInfo.textContent = '';
   resetGameUI();
   drawBoard();
+  updateTopControlsUI('notInGame');
 });
 
+// Funktion för att visa rätt kontroller beroende på spelsession
+function updateTopControlsUI(state) {
+  if (state === 'notInGame') {
+    // Visa namn + skapa + join, göm spela igen & lämna
+    nameInput.style.display = '';
+    setNameBtn.style.display = '';
+    createBtn.style.display = '';
+    joinInput.style.display = '';
+    joinBtn.style.display = '';
+    playAgainBtn.style.display = 'none';
+    leaveBtn.style.display = 'none';
+
+    createBtn.disabled = !playerName;
+    joinBtn.disabled = !playerName;
+    nameInput.disabled = false;
+    setNameBtn.disabled = false;
+
+  } else if (state === 'inGame') {
+    // Göm namn + skapa + join, visa lämna, göm spela igen
+    nameInput.style.display = 'none';
+    setNameBtn.style.display = 'none';
+    createBtn.style.display = 'none';
+    joinInput.style.display = 'none';
+    joinBtn.style.display = 'none';
+    playAgainBtn.style.display = 'none';
+    leaveBtn.style.display = '';
+  } else if (state === 'gameOver') {
+    // Göm namn + skapa + join, visa spela igen + lämna
+    nameInput.style.display = 'none';
+    setNameBtn.style.display = 'none';
+    createBtn.style.display = 'none';
+    joinInput.style.display = 'none';
+    joinBtn.style.display = 'none';
+    playAgainBtn.style.display = '';
+    leaveBtn.style.display = '';
+  }
+}
+
+// Initialt, visa kontroller för ej i spel
+updateTopControlsUI('notInGame');
+
+
+// ===================
+// SOCKET-EVENTHANTERING
+// ===================
+
+// När ett nytt spel har skapats
 socket.on('gameCreated', (id) => {
-  console.log(`Game created with room ID: ${id}`);
   roomId = id;
   roomInfo.textContent = `Spel skapat! Rum-ID: ${roomId}`;
+  updateTopControlsUI('inGame');
 });
 
+// När spelet startar
 socket.on('startGame', (data) => {
-  console.log('Game started');
   board = data.board;
   drawBoard();
+  updateTopControlsUI('inGame');  // Visa kontroller för pågående spel
+  gameMessage.textContent = '';   // Nollställ meddelande
 });
 
+// När brädet uppdateras efter ett drag
 socket.on('updateBoard', (newBoard) => {
-  console.log('Board updated');
   board = newBoard;
   drawBoard();
 });
 
+// Tar emot spelarens nummer (1 eller 2)
 socket.on('playerInfo', (data) => {
   playerNumber = data.playerNumber;
-  console.log(`You are player number ${playerNumber}`);
 });
 
+// Visar felmeddelanden
 socket.on('error', (msg) => {
-  console.log('Error:', msg);
   alert(msg);
 });
 
+// När spelet är över
 socket.on('gameOver', ({ winner, reason }) => {
   if (reason) {
     gameMessage.textContent = `Spelet avslutades: ${reason}`;
@@ -149,18 +206,22 @@ socket.on('gameOver', ({ winner, reason }) => {
     const color = winner === 1 ? 'Röd' : 'Gul';
     gameMessage.textContent = `${color} spelare vinner!`;
   }
-  endGameButtons.style.display = 'block';
+  updateTopControlsUI('gameOver');  // Visa spela igen + lämna
 });
 
+// När topplistan uppdateras
 socket.on('leaderboardUpdate', (leaderboard) => {
   updateLeaderboard(leaderboard);
 });
 
+// När båda spelare vill spela igen
 socket.on('playAgainReady', () => {
   gameMessage.textContent = 'Båda spelare redo! Spelet startar...';
 });
 
+// När motståndaren lämnar spelet
 socket.on('opponentLeft', () => {
   gameMessage.textContent = 'Motståndaren lämnade lobbyn.';
-  endGameButtons.style.display = 'block';
+  updateTopControlsUI('gameOver');  // Visa spela igen + lämna
 });
+

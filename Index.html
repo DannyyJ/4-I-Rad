@@ -7,6 +7,23 @@
   </head>
   <body>
     <h1>Fyra i rad</h1>
+
+    <!-- Ny container för kontroller högst upp -->
+    <div id="topControls">
+      <input id="nameInput" placeholder="Ange ditt namn" />
+      <button id="setNameBtn">Sätt namn</button>
+
+      <button id="createBtn" disabled>Skapa spel</button>
+      <input id="joinInput" placeholder="Ange rum-ID" />
+      <button id="joinBtn" disabled>Gå med i spel</button>
+
+      <!-- Dessa ska vara dolda tills spelet är slut -->
+      <button id="playAgainBtn" style="display: none">Spela igen</button>
+      <button id="leaveBtn" style="display: none">Lämna lobby</button>
+    </div>
+
+    <p id="roomInfo"></p>
+
     <div id="container">
       <div id="leaderboard">
         <h2>Leaderboard</h2>
@@ -14,21 +31,14 @@
       </div>
 
       <div id="gameArea">
-        <div id="userArea">
-          <input id="nameInput" placeholder="Ange ditt namn" />
-          <button id="setNameBtn">Sätt namn</button>
-        </div>
-
-        <button id="createBtn" disabled>Skapa spel</button>
-        <input id="joinInput" placeholder="Ange rum-ID" />
-        <button id="joinBtn" disabled>Gå med i spel</button>
-        <p id="roomInfo"></p>
         <canvas id="board" width="700" height="600"></canvas>
 
         <div
           id="gameMessage"
           style="margin-top: 20px; font-size: 18px; font-weight: bold"
         ></div>
+
+        <!-- EndGame knappar är nu i topControls, så kan tas bort här -->
 
         <div id="endGameButtons" style="margin-top: 20px; display: none">
           <button id="playAgainBtn">Spela igen</button>
